@@ -1,6 +1,7 @@
 package com.fearlessbear.diylistview;
 
 import android.content.Context;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -17,9 +18,18 @@ import java.util.zip.Inflater;
 
 /**
  * Created by root on 17-4-5.
- * 1.create item
- * 2.complete scroll
+ * 1.创建条目
+ * 1)根据屏幕的高度创建item，直到item的measuredHeight与其前面的item不同为止。
+ * 2.在onTouchEvent中处理滚动事件
+ * 2）移动list中的子View。向上移动时，如果
  * 3.complete reuse item
+ *
+ * 总结：
+ * 1.如果使用循环addView，那么是在循环结束后，才调用layout和draw流程。所以在每个addView执行结束时，什么尺寸参数也
+ * 得不到。
+ * 04-06 16:30:36.398 31595-31595/com.fearlessbear.diylistview I/xiong: add data is 49: 672
+ * 04-06 16:30:36.507 31595-31595/com.fearlessbear.diylistview I/xiong: layout is 722
+ * 04-06 16:30:36.507 31595-31595/com.fearlessbear.diylistview I/xiong: pre draw is 722
  */
 public class DiyListView extends LinearLayout {
     private ArrayList<String> mData;
@@ -27,6 +37,8 @@ public class DiyListView extends LinearLayout {
     private float mDy;
     private float mStartY;
     private ViewTreeObserver observer;
+    private float mItemHeight;
+    int i;
 
     public DiyListView(Context context) {
         this(context, null);
@@ -55,22 +67,37 @@ public class DiyListView extends LinearLayout {
     }
 
     private void initListView(ArrayList<String> mData) {
-        LayoutInflater inflater = LayoutInflater.from(getContext());
-        for (String s : mData) {
-            addView(buildItem(inflater, R.layout.item, s));
-        }
-
-        observer = getViewTreeObserver();
+        ViewTreeObserver observer = getViewTreeObserver();
         observer.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
-                for (int i = 0; i < getChildCount(); i++) {
-                    Log.i("xiong", i + ": " + getChildAt(i).getMeasuredHeight());
-                }
-                observer.removeOnPreDrawListener(this);
+                Log.i("xiong", "pre draw is " + SystemClock.currentThreadTimeMillis() + "");
                 return true;
             }
         });
+        observer.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                Log.i("xiong", "layout is " + SystemClock.currentThreadTimeMillis() + "");
+            }
+        });
+
+        LayoutInflater inflater = LayoutInflater.from(getContext());
+
+        for (final String s : mData) {
+            View child = buildItem(inflater, R.layout.item, s);
+            addView(child);
+            Log.i("xiong", "add " + s + ": " + SystemClock.currentThreadTimeMillis() + "");
+
+            if (mItemHeight == 0) {
+                mItemHeight = child.getMeasuredHeight();
+            }
+//            Log.i("xiong", "initListView: item height is " + child.getMeasuredHeight());
+            if (child.getMeasuredHeight() != mItemHeight) {
+                break;
+            }
+        }
+//        Log.i("xiong", "initListView: item count is " + getChildCount());
     }
 
     private View buildItem(LayoutInflater inflater, int layoutRes, final String s) {
