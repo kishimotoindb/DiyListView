@@ -62,30 +62,114 @@ public class DiyListView extends ViewGroup {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        Log.i("xiong", "list height is " + MeasureSpec.getSize(heightMeasureSpec));
-        setMeasuredDimension(widthMeasureSpec, heightMeasureSpec);
+        int widthUsed = 0;
+        int heightUsed = 0;
 
+        /*
+         * if:列表中没有item，初始化列表，创建所需的所有item
+         * else：刷新列表数据，去掉滚动出屏幕的，增加滚进屏幕的
+         */
         if (getChildCount() == 0 && mData != null) {
             for (int i = 0; i < mData.size(); i++) {
                 View view = getView(mData.get(i));
-                view.measure(widthMeasureSpec, getNewHeightMeasureSpec(heightMeasureSpec, mItemTotalHeight));
+                view.setLayoutParams(new MarginLayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+                measureChildWithMargins(view, widthMeasureSpec, widthUsed, heightMeasureSpec, heightUsed);
                 if (view.getMeasuredHeight() == 0) {
                     break;
                 } else {
-                    mItemTotalHeight += view.getMeasuredHeight();
+                    widthUsed += view.getMeasuredWidth();
+                    heightUsed += view.getMeasuredHeight();
                     addView(view);
                 }
             }
         } else {
 
+
         }
+
+        //确定当前DiyListView的大小
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
     }
 
+    //自己重写当前方法，当作学习
+    @Override
+    protected void measureChildWithMargins(View child, int parentWidthMeasureSpec, int widthUsed, int parentHeightMeasureSpec, int heightUsed) {
+        MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
+        int childWidthMeasureSpec = getChildMeasureSpec(
+                parentWidthMeasureSpec,
+                getPaddingLeft() + getPaddingRight() + lp.leftMargin + lp.rightMargin + widthUsed,
+                lp.width);
+        int childHeightMeasureSpec = getChildMeasureSpec(
+                parentHeightMeasureSpec,
+                getPaddingTop() + getPaddingBottom() + lp.topMargin + lp.bottomMargin + heightUsed,
+                lp.height);
+        child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+    }
+
+    /*
+      根据父容器的spec得到的child的spec，实际上并不是child的大小，这个childSpec只是告诉child，目前屏幕上剩余的显示
+      空间范围为childSpec所圈定的范围，child可以根据这个范围确定自己的大小。child实际上可以比这个范围大，也可以比这个
+      范围小，其最终的大小是由child自身的onMeasure方法确定。只不过如果child的大小超出了childSpec限制的范围，屏幕上是
+      无法显示的，无法显示也就没有意义。
+    */
+    public static int getChildMeasureSpec(int parentMeasureSpec, int padding, int childDimension) {
+        int parentSize = MeasureSpec.getSize(parentMeasureSpec);
+        int parentMode = MeasureSpec.getMode(parentMeasureSpec);
+        int childMaxSize = parentSize - padding;
+        int resultSize = 0;
+        int resultMode = MeasureSpec.UNSPECIFIED;
+
+        switch (parentMode) {
+            case MeasureSpec.EXACTLY:
+                if (childDimension > 0) {
+                    resultSize = childDimension;
+                    resultMode = MeasureSpec.EXACTLY;
+                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.EXACTLY;
+                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.AT_MOST;
+                }
+                break;
+            case MeasureSpec.AT_MOST:
+                if (childDimension > 0) {
+                    resultSize = childDimension;
+                    resultMode = MeasureSpec.EXACTLY;
+                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.AT_MOST;
+                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.AT_MOST;
+                }
+                break;
+            case MeasureSpec.UNSPECIFIED:
+                //忽略，暂时没弄明白这种情况。代码瞎写的。
+                if (childDimension >= 0) {
+                    // Child wants a specific size... let him have it
+                    resultSize = childDimension;
+                    resultMode = MeasureSpec.EXACTLY;
+                } else if (childDimension == LayoutParams.MATCH_PARENT) {
+                    // Child wants to be our size... find out how big it should
+                    // be
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.UNSPECIFIED;
+                } else if (childDimension == LayoutParams.WRAP_CONTENT) {
+                    // Child wants to determine its own size.... find out how
+                    // big it should be
+                    resultSize = childMaxSize;
+                    resultMode = MeasureSpec.UNSPECIFIED;
+                }
+                break;
+        }
+        return MeasureSpec.makeMeasureSpec(resultSize, resultMode);
+    }
 
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int used = getMeasuredHeight();
+        int used = 0;
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
             int childTop = t + used;
