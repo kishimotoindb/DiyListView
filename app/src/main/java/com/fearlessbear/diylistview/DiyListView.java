@@ -1,6 +1,7 @@
 package com.fearlessbear.diylistview;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -16,22 +17,65 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.Inflater;
 
-/**
- * Created by root on 17-4-5.
+/*
+ * 逻辑分析：
  * 1.创建条目
  * 1)根据屏幕的高度创建item，直到item的measuredHeight与其前面的item不同为止。
  * 2.在onTouchEvent中处理滚动事件
  * 2）移动list中的子View。向上移动时，如果
  * 3.complete reuse item
- * <p>
- * 总结：
+ *
+ * 2.列表内容的布局
+ * 1）没有数据->有数据
+ *  a.没有数据->有数据（数据足以填充屏幕，并且还有一部分没有展示）
+ *  b.没有数据->有数据（数据不足以填充屏幕）
+ *  答：a/b的初始化方式没有差别
+ * 2）屏幕滚动（数据初始化后不再变动）
+ *  (
+ *      1.判断child的数量和数据的数量是否一致，如果不一致，那么一定是没有显示完全
+ *
+ *  )
+ *  a.滚动前列表状态分析
+ *   1.数据已经全部显示到屏幕
+ *      不可以滑动
+ *   2.存在未显示到屏幕的数据
+ *      1）第一项处于顶部
+ *          可以上滑
+ *      2）第一项未处于顶部，并且最后一项没有显示完整
+ *          可以任意滑动
+ *      3）最后一项显示完整
+ *          可以下滑
+ * 3)有数据->没有数据
+ *  removeAllView();
+ *
+ *
+ * 问题列表：
  * 1.如果使用循环addView，那么是在循环结束后，才调用layout和draw流程。所以在每个addView执行结束时，什么尺寸参数也
  * 得不到。
  * 04-06 16:30:36.398 31595-31595/com.fearlessbear.diylistview I/xiong: add data is 49: 672
  * 04-06 16:30:36.507 31595-31595/com.fearlessbear.diylistview I/xiong: layout is 722
  * 04-06 16:30:36.507 31595-31595/com.fearlessbear.diylistview I/xiong: pre draw is 722
+ *
+ * 2.
  */
 public class DiyListView extends ViewGroup {
+    /**
+     * 以下四个状态用于确定list的可滚动方式
+     * LIST_NONE：list中没有显示任何内容
+     * LIST_FILLED_TOP：存在未显示到屏幕的数据,并且第一项完整显示在顶部
+     * LIST_FILLED_CENTER：存在未显示到屏幕的数据,第一项没有完整显示在顶部，最后一项没有完整显示在底部
+     * LIST_FILLED_BOTTOM：存在未显示到屏幕的数据,并且最后一项完整显示在底部
+     * LIST_UNFILLED：全部数据完整显示在list中
+     */
+    private static final int LIST_NONE = 1;
+    private static final int LIST_FILLED_TOP = 2;
+    private static final int LIST_FILLED_CENTER = 3;
+    private static final int LIST_FILLED_BOTTOM = 4;
+    private static final int LIST_UNFILLED = 5;
+
+    //初始状态下，列表中没有东西
+    private int mScrollState = LIST_NONE;
+
     private ArrayList<String> mData;
     private float mOldY;
     private float mDy;
@@ -69,15 +113,20 @@ public class DiyListView extends ViewGroup {
          * if:列表中没有item，初始化列表，创建所需的所有item
          * else：刷新列表数据，去掉滚动出屏幕的，增加滚进屏幕的
          */
-        if (getChildCount() == 0 && mData != null) {
+        if (mData == null || mData.size() == 0) {
+            removeAllViews();
+            mScrollState = LIST_NONE;
+        } else if (getChildCount() == 0) {
+            mScrollState = LIST_UNFILLED;
+
             for (int i = 0; i < mData.size(); i++) {
                 View view = getView(mData.get(i));
                 view.setLayoutParams(new MarginLayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
                 measureChildWithMargins(view, widthMeasureSpec, widthUsed, heightMeasureSpec, heightUsed);
                 if (view.getMeasuredHeight() == 0) {
+                    mScrollState = LIST_FILLED_TOP;
                     break;
                 } else {
-                    widthUsed += view.getMeasuredWidth();
                     heightUsed += view.getMeasuredHeight();
                     addView(view);
                 }
@@ -92,7 +141,6 @@ public class DiyListView extends ViewGroup {
     }
 
     //自己重写当前方法，当作学习
-    @Override
     protected void measureChildWithMargins(View child, int parentWidthMeasureSpec, int widthUsed, int parentHeightMeasureSpec, int heightUsed) {
         MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
         int childWidthMeasureSpec = getChildMeasureSpec(
@@ -169,13 +217,25 @@ public class DiyListView extends ViewGroup {
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        int used = 0;
+        int heightUsed = 0;
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
-            int childTop = t + used;
+            int childTop = heightUsed;
             int childBottom = childTop + child.getMeasuredHeight();
-            child.layout(l, childTop, r, childBottom);
+            heightUsed = childBottom;
+            Log.i("xiong", "top is " + childTop + ";" + "left is " + l + "; bottom is " + childBottom + "right is " + r);
+            child.layout(0, childTop, r - l, childBottom);
         }
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+    }
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        super.dispatchDraw(canvas);
     }
 
     private int getNewHeightMeasureSpec(int heightMeasureSpec, int mItemTotalHeight) {
@@ -203,6 +263,10 @@ public class DiyListView extends ViewGroup {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        //没有内容或者未填充满数据的情况下，不能滑动。
+        if (mScrollState == LIST_NONE || mScrollState == LIST_UNFILLED) {
+            return true;
+        }
         final float y = event.getY();
         final int action = event.getAction();
 
